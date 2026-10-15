@@ -1,0 +1,1250 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Wasserkreislauf-Simulation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface-alt: #e8eef4;
+    --text: #1e2a3a;
+    --text-muted: #6b7d8f;
+    --water: #3d8ef0;
+    --water-deep: #2563a0;
+    --water-light: #a8d0ff;
+    --pipe: #9eaab8;
+    --pipe-inner: #c8d0da;
+    --tank-wall: #6e7a88;
+    --tank-inner: #dfe4ea;
+    --wheel-frame: #4a5568;
+    --wheel-blade: #c8983a;
+    --wheel-blade-hi: #ddb04e;
+    --brake-off: #78a080;
+    --brake-on: #d64545;
+    --accent: #3b82f6;
+    --accent-muted: #93b8f0;
+    --border: #d0d8e2;
+    --control-bg: #f7f9fc;
+    --slider-track: #d0d8e2;
+    --slider-thumb: #3b82f6;
+    --shadow: rgba(30,42,58,0.08);
+    --flex-tube: #b0bcc8;
+    --flex-tube-inner: #d5dce5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111827;
+      --surface: #1e2733;
+      --surface-alt: #283240;
+      --text: #e2e8f0;
+      --text-muted: #8b9db0;
+      --water: #4a9af5;
+      --water-deep: #3478c8;
+      --water-light: #2a4a70;
+      --pipe: #4a5568;
+      --pipe-inner: #384454;
+      --tank-wall: #8899aa;
+      --tank-inner: #2a3444;
+      --wheel-frame: #8899aa;
+      --wheel-blade: #d4a843;
+      --wheel-blade-hi: #e8c060;
+      --brake-off: #5a8a62;
+      --brake-on: #e05555;
+      --accent: #5b9cf5;
+      --accent-muted: #3a6090;
+      --border: #334155;
+      --control-bg: #1a2332;
+      --slider-track: #334155;
+      --slider-thumb: #5b9cf5;
+      --shadow: rgba(0,0,0,0.25);
+      --flex-tube: #3a4a5a;
+      --flex-tube-inner: #2e3e4e;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111827;
+    --surface: #1e2733;
+    --surface-alt: #283240;
+    --text: #e2e8f0;
+    --text-muted: #8b9db0;
+    --water: #4a9af5;
+    --water-deep: #3478c8;
+    --water-light: #2a4a70;
+    --pipe: #4a5568;
+    --pipe-inner: #384454;
+    --tank-wall: #8899aa;
+    --tank-inner: #2a3444;
+    --wheel-frame: #8899aa;
+    --wheel-blade: #d4a843;
+    --wheel-blade-hi: #e8c060;
+    --brake-off: #5a8a62;
+    --brake-on: #e05555;
+    --accent: #5b9cf5;
+    --accent-muted: #3a6090;
+    --border: #334155;
+    --control-bg: #1a2332;
+    --slider-track: #334155;
+    --slider-thumb: #5b9cf5;
+    --shadow: rgba(0,0,0,0.25);
+    --flex-tube: #3a4a5a;
+    --flex-tube-inner: #2e3e4e;
+    color-scheme: dark;
+  }
+
+  html { height: 100% }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 12px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+  }
+
+  h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 2px;
+    text-align: center;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .sim-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 820px;
+    aspect-ratio: 82 / 68;
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px var(--shadow);
+    overflow: hidden;
+    cursor: default;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .controls {
+    width: 100%;
+    max-width: 820px;
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  @media (max-width: 520px) {
+    .controls { grid-template-columns: 1fr; }
+    .sim-wrapper { aspect-ratio: 82 / 80; }
+    h1 { font-size: 1.05rem }
+  }
+
+  .ctrl-group {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+  .ctrl-group.full { grid-column: 1 / -1; }
+
+  .ctrl-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--slider-track);
+    outline: none;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+  .slider-row input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+  }
+  .slider-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 500;
+    min-width: 36px;
+    text-align: right;
+    color: var(--accent);
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .check-row input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;
+  }
+  .check-row span {
+    font-size: 0.88rem;
+  }
+
+  .btn-reset {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 6px 18px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-top: 4px;
+  }
+  .btn-reset:hover { background: var(--surface-alt) }
+
+  .freq-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .freq-row.active { opacity: 1; pointer-events: auto }
+  .freq-row label { font-size: 0.82rem; white-space: nowrap; }
+
+  .hint {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: var(--surface);
+    padding: 2px 10px;
+    border-radius: 10px;
+    opacity: 0.8;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+</style>
+
+<h1>Wasserkreislauf &amp; Wechselstrom</h1>
+<p class="subtitle">Höhendifferenz ≙ Spannung · Wasserstrom ≙ Stromstärke · Bremse ≙ Widerstand</p>
+
+<div class="sim-wrapper" id="simWrap">
+  <canvas id="c"></canvas>
+  <div class="hint" id="hint">Reservoire nach oben / unten ziehen</div>
+</div>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <div class="ctrl-label">Widerstand (Bremse am Rad)</div>
+    <div class="slider-row">
+      <span style="font-size:.78rem">leicht</span>
+      <input type="range" id="resistance" min="1" max="10" step="0.5" value="3">
+      <span style="font-size:.78rem">schwer</span>
+      <span class="slider-val" id="resVal">3</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <label class="check-row">
+      <input type="checkbox" id="acMode">
+      <span>Wechselstrom-Modus (AC)</span>
+    </label>
+    <div class="freq-row" id="freqRow">
+      <label>Frequenz:</label>
+      <input type="range" id="freq" min="0.1" max="2" step="0.1" value="0.5" style="flex:1">
+      <span class="slider-val" id="freqVal">0.5 Hz</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <label class="check-row">
+      <input type="checkbox" id="showParticles">
+      <span>Wasserpartikel anzeigen</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" id="showCircuit">
+      <span>Schaltbild einblenden</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" id="showValues">
+      <span>Zahlenwerte anzeigen</span>
+    </label>
+  </div>
+
+  <div class="ctrl-group" style="display:flex;align-items:center;justify-content:center">
+    <button class="btn-reset" id="resetBtn">↺ Zurücksetzen</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// State & constants
+// ═══════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('simWrap');
+
+const CW = 820, CH = 680;
+canvas.width = CW; canvas.height = CH;
+
+// Tank geometry
+const TANK_W = 55, TANK_H = 130, TANK_WALL = 4;
+const PIPE_R = 12;
+const WHEEL_R = 32;
+
+// Circuit rectangle layout (pipes mirror the Schaltbild)
+const CIRCUIT_LEFT = 200;
+const CIRCUIT_RIGHT = 620;
+const CIRCUIT_TOP = 280;
+const CIRCUIT_BOTTOM = 580;
+
+// Source dots (tanks connect directly here)
+const DOT_GAP = 34;
+const LEFT_DOT_X = CW / 2 - DOT_GAP;
+const RIGHT_DOT_X = CW / 2 + DOT_GAP;
+
+// Wheel at bottom center
+const WHEEL_CX = CW / 2;
+const WHEEL_CY = CIRCUIT_BOTTOM;
+
+// Tank X positions (centered directly above source dots)
+const LEFT_X = LEFT_DOT_X - TANK_W / 2;
+const RIGHT_X = RIGHT_DOT_X - TANK_W / 2;
+const LEFT_PIPE_X = LEFT_DOT_X;
+const RIGHT_PIPE_X = RIGHT_DOT_X;
+
+const MIN_TANK_Y = 15;
+const MAX_TANK_Y = CIRCUIT_TOP - TANK_H - 8;
+
+// Physics
+const MAX_WATER = 1;
+const FLOW_K = 0.0002;
+
+const state = {
+  leftY: 40,
+  rightY: 105,
+  leftWater: 0.5,
+  rightWater: 0.5,
+  wheelAngle: 0,
+  wheelSpeed: 0,
+  resistance: 3,
+  acMode: false,
+  acFreq: 0.5,
+  acPhase: 0,
+  showParticles: false,
+  showCircuit: false,
+  showValues: false,
+  dragging: null,
+  dragOffsetY: 0,
+  particles: [],
+  time: 0,
+  flowRate: 0,
+  hintVisible: true
+};
+
+// ═══════════════════════════════════════════════════
+// CSS-aware colors
+// ═══════════════════════════════════════════════════
+function css(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+let colors = {};
+function refreshColors() {
+  colors = {
+    bg: css('--surface') || '#fff',
+    text: css('--text') || '#1e2a3a',
+    textMuted: css('--text-muted') || '#6b7d8f',
+    water: css('--water') || '#3d8ef0',
+    waterDeep: css('--water-deep') || '#2563a0',
+    waterLight: css('--water-light') || '#a8d0ff',
+    pipe: css('--pipe') || '#9eaab8',
+    pipeInner: css('--pipe-inner') || '#c8d0da',
+    tankWall: css('--tank-wall') || '#6e7a88',
+    tankInner: css('--tank-inner') || '#dfe4ea',
+    wheelFrame: css('--wheel-frame') || '#4a5568',
+    wheelBlade: css('--wheel-blade') || '#c8983a',
+    wheelBladeHi: css('--wheel-blade-hi') || '#ddb04e',
+    brakeOff: css('--brake-off') || '#78a080',
+    brakeOn: css('--brake-on') || '#d64545',
+    accent: css('--accent') || '#3b82f6',
+    accentMuted: css('--accent-muted') || '#93b8f0',
+    surfaceAlt: css('--surface-alt') || '#e8eef4',
+    flexTube: css('--flex-tube') || '#b0bcc8',
+    flexTubeInner: css('--flex-tube-inner') || '#d5dce5',
+  };
+}
+refreshColors();
+const mql = window.matchMedia('(prefers-color-scheme: dark)');
+mql.addEventListener('change', refreshColors);
+new MutationObserver(refreshColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ═══════════════════════════════════════════════════
+// Particle system
+// ═══════════════════════════════════════════════════
+function initParticles(n = 40) {
+  state.particles = [];
+  for (let i = 0; i < n; i++) {
+    state.particles.push({ t: Math.random() });
+  }
+}
+initParticles();
+
+function getPipePathPoint(t, leftBottom, rightBottom) {
+  // Path: left tank → flex down → horizontal left to corner → down left side → across bottom through wheel → up right side → horizontal right to dot → flex up → right tank
+  const segments = [
+    // Left flex tube (tank to circuit top)
+    { x0: LEFT_DOT_X, y0: leftBottom, x1: LEFT_DOT_X, y1: CIRCUIT_TOP },
+    // Top horizontal left (dot to left corner)
+    { x0: LEFT_DOT_X, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_TOP },
+    // Left vertical side (corner down to bottom)
+    { x0: CIRCUIT_LEFT, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_BOTTOM },
+    // Bottom left horizontal (to wheel)
+    { x0: CIRCUIT_LEFT, y0: CIRCUIT_BOTTOM, x1: WHEEL_CX - WHEEL_R - 4, y1: CIRCUIT_BOTTOM },
+    // Through wheel area
+    { x0: WHEEL_CX - WHEEL_R - 4, y0: CIRCUIT_BOTTOM, x1: WHEEL_CX + WHEEL_R + 4, y1: CIRCUIT_BOTTOM },
+    // Bottom right horizontal (from wheel)
+    { x0: WHEEL_CX + WHEEL_R + 4, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_BOTTOM },
+    // Right vertical side (bottom up to corner)
+    { x0: CIRCUIT_RIGHT, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_TOP },
+    // Top horizontal right (right corner to dot)
+    { x0: CIRCUIT_RIGHT, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: CIRCUIT_TOP },
+    // Right flex tube (circuit top up to tank)
+    { x0: RIGHT_DOT_X, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: rightBottom },
+  ];
+  const lengths = segments.map(s => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
+  const total = lengths.reduce((a, b) => a + b, 0);
+  let dist = t * total;
+  for (let i = 0; i < segments.length; i++) {
+    if (dist <= lengths[i]) {
+      const frac = lengths[i] > 0 ? dist / lengths[i] : 0;
+      return {
+        x: segments[i].x0 + (segments[i].x1 - segments[i].x0) * frac,
+        y: segments[i].y0 + (segments[i].y1 - segments[i].y0) * frac
+      };
+    }
+    dist -= lengths[i];
+  }
+  const last = segments[segments.length - 1];
+  return { x: last.x1, y: last.y1 };
+}
+
+// ═══════════════════════════════════════════════════
+// Physics
+// ═══════════════════════════════════════════════════
+function getWaterSurfaceY(tankY, waterFrac) {
+  const innerH = TANK_H - TANK_WALL * 2;
+  return tankY + TANK_WALL + innerH * (1 - waterFrac);
+}
+
+function getPhysicalHeight(tankY, waterFrac) {
+  return CH - getWaterSurfaceY(tankY, waterFrac);
+}
+
+function update(dt) {
+  if (state.acMode) {
+    state.acPhase += dt * state.acFreq * Math.PI * 2;
+    const center = (MIN_TANK_Y + MAX_TANK_Y) / 2;
+    const amp = (MAX_TANK_Y - MIN_TANK_Y) * 0.38;
+    state.leftY = center - amp * Math.sin(state.acPhase);
+    state.rightY = center + amp * Math.sin(state.acPhase);
+  }
+
+  const hL = getPhysicalHeight(state.leftY, state.leftWater);
+  const hR = getPhysicalHeight(state.rightY, state.rightWater);
+  const dh = hL - hR;
+
+  const R = state.resistance;
+  let Q = FLOW_K * dh / R;
+
+  if (Q > 0) {
+    Q = Math.min(Q, state.leftWater * 0.5, (1 - state.rightWater) * 0.5);
+    if (state.leftWater <= 0.001) Q = 0;
+  } else {
+    Q = Math.max(Q, -state.rightWater * 0.5, -(1 - state.leftWater) * 0.5);
+    if (state.rightWater <= 0.001) Q = 0;
+  }
+
+  state.leftWater = Math.max(0, Math.min(1, state.leftWater - Q));
+  state.rightWater = Math.max(0, Math.min(1, state.rightWater + Q));
+
+  const total = state.leftWater + state.rightWater;
+  if (total > 0.001) {
+    state.leftWater *= MAX_WATER / total;
+    state.rightWater *= MAX_WATER / total;
+  }
+
+  state.flowRate = Q;
+
+  const targetSpeed = Q * 150 / R;
+  state.wheelSpeed += (targetSpeed - state.wheelSpeed) * 0.08;
+  state.wheelAngle += state.wheelSpeed;
+
+  if (state.showParticles) {
+    const speed = Q * 0.4;
+    for (const p of state.particles) {
+      p.t += speed;
+      if (p.t > 1) p.t -= 1;
+      if (p.t < 0) p.t += 1;
+    }
+  }
+
+  state.time += dt;
+}
+
+// ═══════════════════════════════════════════════════
+// Drawing helpers
+// ═══════════════════════════════════════════════════
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ═══════════════════════════════════════════════════
+// Draw
+// ═══════════════════════════════════════════════════
+function draw() {
+  ctx.clearRect(0, 0, CW, CH);
+
+  const leftBottom = state.leftY + TANK_H;
+  const rightBottom = state.rightY + TANK_H;
+
+  drawPipes(leftBottom, rightBottom);
+  drawPipeWater(leftBottom, rightBottom);
+  drawSourceDots();
+  drawTank(LEFT_X, state.leftY, state.leftWater, 'L');
+  drawTank(RIGHT_X, state.rightY, state.rightWater, 'R');
+  drawWheel();
+  if (state.showParticles) drawParticles(leftBottom, rightBottom);
+  drawHeightAnnotation();
+  drawFlowArrow();
+  drawLabels();
+  if (state.showCircuit) drawCircuit();
+  if (state.showValues) drawValues();
+}
+
+function drawPipes(lb, rb) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Helper: draw one segment outer + inner
+  function pipeSegment(x0, y0, x1, y1, outer, inner) {
+    ctx.lineWidth = PIPE_R * 2;
+    ctx.strokeStyle = outer;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    ctx.lineWidth = PIPE_R * 2 - 6;
+    ctx.strokeStyle = inner;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+
+  // Flex tubes (from tank bottoms straight down to circuit top at dot positions)
+  pipeSegment(LEFT_DOT_X, lb - TANK_WALL, LEFT_DOT_X, CIRCUIT_TOP, colors.flexTube, colors.flexTubeInner);
+  pipeSegment(RIGHT_DOT_X, rb - TANK_WALL, RIGHT_DOT_X, CIRCUIT_TOP, colors.flexTube, colors.flexTubeInner);
+
+  // Dashed flex pattern on tubes
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = colors.pipe;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(LEFT_DOT_X - PIPE_R + 3, lb - TANK_WALL);
+  ctx.lineTo(LEFT_DOT_X - PIPE_R + 3, CIRCUIT_TOP);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(LEFT_DOT_X + PIPE_R - 3, lb - TANK_WALL);
+  ctx.lineTo(LEFT_DOT_X + PIPE_R - 3, CIRCUIT_TOP);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(RIGHT_DOT_X - PIPE_R + 3, rb - TANK_WALL);
+  ctx.lineTo(RIGHT_DOT_X - PIPE_R + 3, CIRCUIT_TOP);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(RIGHT_DOT_X + PIPE_R - 3, rb - TANK_WALL);
+  ctx.lineTo(RIGHT_DOT_X + PIPE_R - 3, CIRCUIT_TOP);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // Rigid circuit pipes
+  // Top horizontal: from dots outward to circuit corners
+  pipeSegment(LEFT_DOT_X, CIRCUIT_TOP, CIRCUIT_LEFT, CIRCUIT_TOP, colors.pipe, colors.pipeInner);
+  pipeSegment(RIGHT_DOT_X, CIRCUIT_TOP, CIRCUIT_RIGHT, CIRCUIT_TOP, colors.pipe, colors.pipeInner);
+  // Left vertical side (corner down to bottom)
+  pipeSegment(CIRCUIT_LEFT, CIRCUIT_TOP, CIRCUIT_LEFT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
+  // Right vertical side
+  pipeSegment(CIRCUIT_RIGHT, CIRCUIT_TOP, CIRCUIT_RIGHT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
+  // Bottom horizontal
+  pipeSegment(CIRCUIT_LEFT, CIRCUIT_BOTTOM, CIRCUIT_RIGHT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
+}
+
+function drawPipeWater(lb, rb) {
+  const hasWater = (state.leftWater > 0.005 || state.rightWater > 0.005);
+  if (!hasWater) return;
+
+  ctx.lineWidth = PIPE_R * 2 - 8;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = colors.water;
+  ctx.globalAlpha = 0.7;
+
+  const leftSurfY = getWaterSurfaceY(state.leftY, state.leftWater);
+  const rightSurfY = getWaterSurfaceY(state.rightY, state.rightWater);
+
+  // Left flex tube (from water surface down to circuit top)
+  if (state.leftWater > 0.005) {
+    const startY = Math.max(leftSurfY, state.leftY + TANK_WALL);
+    ctx.beginPath();
+    ctx.moveTo(LEFT_DOT_X, Math.min(lb - TANK_WALL, startY + PIPE_R));
+    ctx.lineTo(LEFT_DOT_X, CIRCUIT_TOP);
+    ctx.stroke();
+  }
+
+  // Top horizontal: from dots outward to corners (filled when water present)
+  if (state.leftWater > 0.005) {
+    ctx.beginPath();
+    ctx.moveTo(LEFT_DOT_X, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_TOP);
+    ctx.stroke();
+  }
+  if (state.rightWater > 0.005) {
+    ctx.beginPath();
+    ctx.moveTo(RIGHT_DOT_X, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
+    ctx.stroke();
+  }
+
+  // Left vertical side (corner to bottom)
+  if (state.leftWater > 0.005) {
+    ctx.beginPath();
+    ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+    ctx.stroke();
+  }
+
+  // Bottom horizontal (always filled if any water)
+  ctx.beginPath();
+  ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+  ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+  ctx.stroke();
+
+  // Right vertical side (bottom to corner)
+  if (state.rightWater > 0.005) {
+    ctx.beginPath();
+    ctx.moveTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
+    ctx.stroke();
+  }
+
+  // Right flex tube (from circuit top up to water surface)
+  if (state.rightWater > 0.005) {
+    const startY = Math.max(rightSurfY, state.rightY + TANK_WALL);
+    ctx.beginPath();
+    ctx.moveTo(RIGHT_DOT_X, CIRCUIT_TOP);
+    ctx.lineTo(RIGHT_DOT_X, Math.min(rb - TANK_WALL, startY + PIPE_R));
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawSourceDots() {
+  // Two source dots at top center of circuit
+  ctx.fillStyle = colors.accent;
+
+  ctx.beginPath();
+  ctx.arc(LEFT_DOT_X, CIRCUIT_TOP, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(RIGHT_DOT_X, CIRCUIT_TOP, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Labels
+}
+
+function drawTank(x, y, waterFrac, label) {
+  const w = TANK_W, h = TANK_H, wall = TANK_WALL;
+  const innerW = w - wall * 2;
+  const innerH = h - wall * 2;
+
+  // Tank wall
+  roundRect(x, y, w, h, 6);
+  ctx.fillStyle = colors.tankWall;
+  ctx.fill();
+
+  // Inner area
+  ctx.fillStyle = colors.tankInner;
+  ctx.fillRect(x + wall, y + wall, innerW, innerH);
+
+  // Water fill
+  if (waterFrac > 0.002) {
+    const waterH = innerH * waterFrac;
+    const waterY = y + wall + innerH - waterH;
+
+    const grad = ctx.createLinearGradient(0, waterY, 0, waterY + waterH);
+    grad.addColorStop(0, colors.water);
+    grad.addColorStop(1, colors.waterDeep);
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + wall, waterY, innerW, waterH);
+
+    // Water surface highlight
+    ctx.fillStyle = colors.waterLight;
+    ctx.globalAlpha = 0.4;
+    ctx.fillRect(x + wall, waterY, innerW, 3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Open top indicator
+  ctx.fillStyle = colors.tankInner;
+  ctx.fillRect(x + w / 2 - 10, y - 1, 20, wall + 2);
+
+  // Drag grip
+  ctx.strokeStyle = colors.textMuted;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < 3; i++) {
+    const gy = y + 14 + i * 5;
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2 - 10, gy);
+    ctx.lineTo(x + w / 2 + 10, gy);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Label
+}
+
+function drawWheel() {
+  const cx = WHEEL_CX, cy = WHEEL_CY, r = WHEEL_R;
+
+  // Brake pad
+  const brakeStrength = (state.resistance - 1) / 9;
+  const brakeColor = lerpColor(colors.brakeOff, colors.brakeOn, brakeStrength);
+  const padAngle = 0.4 + brakeStrength * 0.4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 6, -Math.PI / 2 - padAngle, -Math.PI / 2 + padAngle);
+  ctx.lineWidth = 6 + brakeStrength * 4;
+  ctx.strokeStyle = brakeColor;
+  ctx.lineCap = 'butt';
+  ctx.stroke();
+
+  // Brake label
+  ctx.fillStyle = brakeColor;
+  ctx.font = '500 10px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Bremse', cx, cy - r - 16);
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = colors.wheelFrame;
+  ctx.stroke();
+
+  // Inner hub
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fill();
+
+  // Blades
+  const numBlades = 6;
+  for (let i = 0; i < numBlades; i++) {
+    const a = state.wheelAngle + (i * Math.PI * 2) / numBlades;
+    const bx = cx + Math.cos(a) * (r - 4);
+    const by = cy + Math.sin(a) * (r - 4);
+
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8);
+    ctx.lineTo(bx, by);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = colors.wheelBlade;
+    ctx.stroke();
+
+    const perpA = a + Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(bx + Math.cos(perpA) * 6, by + Math.sin(perpA) * 6);
+    ctx.lineTo(bx - Math.cos(perpA) * 6, by - Math.sin(perpA) * 6);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = colors.wheelBladeHi;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+}
+
+function drawParticles(lb, rb) {
+  ctx.fillStyle = colors.waterLight;
+  for (const p of state.particles) {
+    const pos = getPipePathPoint(p.t, lb - TANK_WALL, rb - TANK_WALL);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.8;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHeightAnnotation() {
+  const leftSurfY = getWaterSurfaceY(state.leftY, state.leftWater);
+  const rightSurfY = getWaterSurfaceY(state.rightY, state.rightWater);
+
+  if (Math.abs(leftSurfY - rightSurfY) < 5) return;
+
+  const topY = Math.min(leftSurfY, rightSurfY);
+  const botY = Math.max(leftSurfY, rightSurfY);
+  // Place annotation to the right of both tanks
+  const annotX = RIGHT_X + TANK_W + 20;
+
+  // Dashed lines from water surfaces
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = colors.textMuted;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.6;
+
+  ctx.beginPath();
+  ctx.moveTo(leftSurfY < rightSurfY ? LEFT_X + TANK_W + 5 : RIGHT_X + TANK_W + 5, topY);
+  ctx.lineTo(annotX - 5, topY);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(leftSurfY > rightSurfY ? LEFT_X + TANK_W + 5 : RIGHT_X + TANK_W + 5, botY);
+  ctx.lineTo(annotX - 5, botY);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // Vertical double arrow
+  ctx.strokeStyle = colors.accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(annotX, topY + 6);
+  ctx.lineTo(annotX, botY - 6);
+  ctx.stroke();
+
+  drawArrowhead(annotX, topY + 6, -Math.PI / 2, colors.accent);
+  drawArrowhead(annotX, botY - 6, Math.PI / 2, colors.accent);
+
+  // "Δh" label
+  ctx.fillStyle = colors.accent;
+  ctx.font = 'italic 600 16px "DM Sans", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Δh', annotX + 8, (topY + botY) / 2 + 5);
+}
+
+function drawArrowhead(x, y, angle, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-5, -4);
+  ctx.lineTo(-5, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFlowArrow() {
+  if (Math.abs(state.flowRate) < 0.0001) return;
+
+  const dir = state.flowRate > 0 ? 1 : -1;
+  const strength = Math.min(Math.abs(state.flowRate) * 3200, 1);
+
+  // Show flow direction on left vertical side
+  const arrowX = CIRCUIT_LEFT - PIPE_R - 16;
+  const arrowY = (CIRCUIT_TOP + CIRCUIT_BOTTOM) / 2;
+
+  ctx.globalAlpha = 0.5 + strength * 0.5;
+  ctx.fillStyle = colors.water;
+  ctx.font = '500 12px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+
+  ctx.save();
+  ctx.translate(arrowX, arrowY);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(dir > 0 ? '← Wasserstrom' : 'Wasserstrom →', 0, 0);
+  ctx.restore();
+
+  ctx.globalAlpha = 1;
+}
+
+function drawLabels() {
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '500 11px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Schaufelrad (Verbraucher)', WHEEL_CX, WHEEL_CY + WHEEL_R + 22);
+
+  if (state.acMode) {
+    ctx.fillStyle = colors.accent;
+    ctx.font = '600 11px "DM Sans", sans-serif';
+    ctx.fillText('⚡ AC-Modus', CW / 2, 28);
+  }
+}
+
+function drawCircuit() {
+  // Position centered in the circuit rectangle
+  const cx = (CIRCUIT_LEFT + CIRCUIT_RIGHT) / 2;
+  const cy = (CIRCUIT_TOP + CIRCUIT_BOTTOM) / 2;
+  const w = 175, h = 140;
+  const ox = cx - w / 2;
+  const oy = cy - h / 2;
+
+  // Background
+  roundRect(ox, oy, w, h, 8);
+  ctx.fillStyle = colors.bg;
+  ctx.globalAlpha = 0.92;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = colors.pipe;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '600 9px "DM Sans", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCHALTBILD', ox + 10, oy + 14);
+
+  const scx = ox + w / 2;
+  const topSY = oy + 38;
+  const botSY = oy + h - 22;
+  const halfW = 38;
+  const dotG = 8;
+
+  ctx.strokeStyle = colors.text;
+  ctx.lineWidth = 1.5;
+
+  // Left side wires
+  ctx.beginPath();
+  ctx.moveTo(scx - dotG, topSY);
+  ctx.lineTo(scx - halfW, topSY);
+  ctx.lineTo(scx - halfW, botSY);
+  ctx.stroke();
+
+  // Right side wires
+  ctx.beginPath();
+  ctx.moveTo(scx + dotG, topSY);
+  ctx.lineTo(scx + halfW, topSY);
+  ctx.lineTo(scx + halfW, botSY);
+  ctx.stroke();
+
+  // Bottom wire (left to lamp)
+  ctx.beginPath();
+  ctx.moveTo(scx - halfW, botSY);
+  ctx.lineTo(scx - 10, botSY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(scx + 10, botSY);
+  ctx.lineTo(scx + halfW, botSY);
+  ctx.stroke();
+
+  // Lamp symbol (circle with ×)
+  ctx.beginPath();
+  ctx.arc(scx, botSY, 10, 0, Math.PI * 2);
+  ctx.strokeStyle = colors.text;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const d = 6;
+  ctx.beginPath();
+  ctx.moveTo(scx - d, botSY - d);
+  ctx.lineTo(scx + d, botSY + d);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(scx + d, botSY - d);
+  ctx.lineTo(scx - d, botSY + d);
+  ctx.stroke();
+
+  // Source dots
+  ctx.fillStyle = colors.accent;
+  ctx.beginPath();
+  ctx.arc(scx - dotG, topSY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(scx + dotG, topSY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Labels
+  ctx.font = '500 10px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = colors.accent;
+  ctx.fillText('U', scx, topSY - 10);
+
+  ctx.fillStyle = colors.text;
+  ctx.fillText('Lampe', scx, botSY + 22);
+
+  // Current arrow
+  const dir = state.flowRate > 0 ? 1 : (state.flowRate < 0 ? -1 : 0);
+  if (dir !== 0) {
+    ctx.fillStyle = colors.water;
+    ctx.font = '500 10px "DM Sans", sans-serif';
+    const arrowY = (topSY + botSY) / 2;
+    ctx.fillText(dir > 0 ? 'I ↓' : 'I ↑', scx + halfW + 16, arrowY + 3);
+  }
+}
+
+function drawValues() {
+  const ox = 14, oy = 18;
+  const w = 175, h = 82;
+
+  roundRect(ox, oy, w, h, 8);
+  ctx.fillStyle = colors.bg;
+  ctx.globalAlpha = 0.92;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = colors.pipe;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '600 9px "DM Sans", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('MESSWERTE', ox + 10, oy + 14);
+
+  const leftH = getPhysicalHeight(state.leftY, state.leftWater);
+  const rightH = getPhysicalHeight(state.rightY, state.rightWater);
+  const dh = leftH - rightH;
+  const voltage = (dh / 100).toFixed(1);
+  const current = (state.flowRate * 1000).toFixed(1);
+
+  ctx.font = '500 12px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = colors.accent;
+  ctx.fillText(`Δh ≙ U = ${voltage} V`, ox + 10, oy + 34);
+
+  ctx.fillStyle = colors.water;
+  ctx.fillText(`Q  ≙ I = ${current} mA`, ox + 10, oy + 52);
+
+  ctx.fillStyle = colors.text;
+  ctx.fillText(`R       = ${state.resistance.toFixed(1)} Ω`, ox + 10, oy + 70);
+}
+
+// ═══════════════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════════════
+function lerpColor(a, b, t) {
+  const parseHex = (c) => {
+    c = c.replace('#', '');
+    return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)];
+  };
+  const [r1,g1,b1] = parseHex(a);
+  const [r2,g2,b2] = parseHex(b);
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const bl = Math.round(b1 + (b2 - b1) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+// ═══════════════════════════════════════════════════
+// Interaction
+// ═══════════════════════════════════════════════════
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CW / rect.width;
+  const scaleY = CH / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
+function hitTank(px, py, tankX, tankY) {
+  return px >= tankX && px <= tankX + TANK_W && py >= tankY && py <= tankY + TANK_H;
+}
+
+function onPointerDown(e) {
+  if (state.acMode) return;
+  const pos = getCanvasPos(e);
+  if (hitTank(pos.x, pos.y, LEFT_X, state.leftY)) {
+    state.dragging = 'left';
+    state.dragOffsetY = pos.y - state.leftY;
+    hideHint();
+  } else if (hitTank(pos.x, pos.y, RIGHT_X, state.rightY)) {
+    state.dragging = 'right';
+    state.dragOffsetY = pos.y - state.rightY;
+    hideHint();
+  }
+}
+
+function onPointerMove(e) {
+  if (!state.dragging) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  let newY = pos.y - state.dragOffsetY;
+  newY = Math.max(MIN_TANK_Y, Math.min(MAX_TANK_Y, newY));
+
+  if (state.dragging === 'left') state.leftY = newY;
+  else state.rightY = newY;
+}
+
+function onPointerUp() {
+  state.dragging = null;
+}
+
+wrap.addEventListener('mousemove', (e) => {
+  if (state.acMode) { wrap.style.cursor = 'default'; return; }
+  const pos = getCanvasPos(e);
+  if (hitTank(pos.x, pos.y, LEFT_X, state.leftY) || hitTank(pos.x, pos.y, RIGHT_X, state.rightY)) {
+    wrap.style.cursor = 'grab';
+  } else {
+    wrap.style.cursor = 'default';
+  }
+});
+
+wrap.addEventListener('mousedown', onPointerDown);
+wrap.addEventListener('touchstart', onPointerDown, { passive: true });
+window.addEventListener('mousemove', onPointerMove);
+window.addEventListener('touchmove', onPointerMove, { passive: false });
+window.addEventListener('mouseup', onPointerUp);
+window.addEventListener('touchend', onPointerUp);
+
+function hideHint() {
+  if (state.hintVisible) {
+    state.hintVisible = false;
+    document.getElementById('hint').style.opacity = '0';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// Controls
+// ═══════════════════════════════════════════════════
+const resistanceEl = document.getElementById('resistance');
+const resValEl = document.getElementById('resVal');
+const acModeEl = document.getElementById('acMode');
+const freqEl = document.getElementById('freq');
+const freqValEl = document.getElementById('freqVal');
+const freqRowEl = document.getElementById('freqRow');
+const showParticlesEl = document.getElementById('showParticles');
+const showCircuitEl = document.getElementById('showCircuit');
+const showValuesEl = document.getElementById('showValues');
+const resetBtn = document.getElementById('resetBtn');
+
+resistanceEl.addEventListener('input', () => {
+  state.resistance = parseFloat(resistanceEl.value);
+  resValEl.textContent = state.resistance.toFixed(1);
+});
+
+acModeEl.addEventListener('change', () => {
+  state.acMode = acModeEl.checked;
+  freqRowEl.classList.toggle('active', state.acMode);
+  if (state.acMode) {
+    state.acPhase = 0;
+    hideHint();
+  }
+});
+
+freqEl.addEventListener('input', () => {
+  state.acFreq = parseFloat(freqEl.value);
+  freqValEl.textContent = state.acFreq.toFixed(1) + ' Hz';
+});
+
+showParticlesEl.addEventListener('change', () => {
+  state.showParticles = showParticlesEl.checked;
+  if (state.showParticles) initParticles();
+});
+
+showCircuitEl.addEventListener('change', () => {
+  state.showCircuit = showCircuitEl.checked;
+});
+
+showValuesEl.addEventListener('change', () => {
+  state.showValues = showValuesEl.checked;
+});
+
+resetBtn.addEventListener('click', () => {
+  state.leftY = 40;
+  state.rightY = 105;
+  state.leftWater = 0.5;
+  state.rightWater = 0.5;
+  state.wheelAngle = 0;
+  state.wheelSpeed = 0;
+  state.flowRate = 0;
+  state.acPhase = 0;
+  state.time = 0;
+  state.acMode = false;
+  acModeEl.checked = false;
+  freqRowEl.classList.remove('active');
+  initParticles();
+});
+
+// ═══════════════════════════════════════════════════
+// Main loop
+// ═══════════════════════════════════════════════════
+let lastTime = 0;
+function loop(ts) {
+  const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.05) : 0.016;
+  lastTime = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+
+</body></html>
