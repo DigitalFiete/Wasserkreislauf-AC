@@ -304,8 +304,22 @@
   </div>
 
   <div class="ctrl-group">
+    <div class="ctrl-label">Tankgröße (Kapazität)</div>
+    <div class="slider-row">
+      <span style="font-size:.78rem">klein</span>
+      <input type="range" id="tankCap" min="0" max="3" step="0.1" value="1">
+      <span style="font-size:.78rem">groß</span>
+      <span class="slider-val" id="capVal">1×</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
     <label class="check-row">
-      <input type="checkbox" id="showParticles">
+      <input type="checkbox" id="pumpMode">
+      <span>⚡ Pumpe (Steckdose)</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" id="showParticles" checked>
       <span>Wasserpartikel anzeigen</span>
     </label>
     <label class="check-row">
@@ -318,7 +332,7 @@
     </label>
   </div>
 
-  <div class="ctrl-group" style="display:flex;align-items:center;justify-content:center">
+  <div class="ctrl-group full" style="display:flex;align-items:center;justify-content:center">
     <button class="btn-reset" id="resetBtn">↺ Zurücksetzen</button>
   </div>
 </div>
@@ -366,6 +380,9 @@ const MAX_TANK_Y = CIRCUIT_TOP - TANK_H - 8;
 // Physics
 const MAX_WATER = 1;
 const FLOW_K = 0.0002;
+const HOUSING_THICK = 5;
+const HOUSING_R = WHEEL_R + HOUSING_THICK;
+const TURBINE_OFFSET_Y = 10;
 
 const state = {
   leftY: 40,
@@ -386,6 +403,8 @@ const state = {
   particles: [],
   time: 0,
   flowRate: 0,
+  tankCapacity: 1,
+  pumpActive: false,
   hintVisible: true
 };
 
@@ -438,37 +457,60 @@ function initParticles(n = 40) {
 initParticles();
 
 function getPipePathPoint(t, leftBottom, rightBottom) {
-  // Path: left tank → flex down → horizontal left to corner → down left side → across bottom through wheel → up right side → horizontal right to dot → flex up → right tank
+  // Arc through turbine housing: particles follow the inner curvature
+  const arcCX = WHEEL_CX;
+  const arcCY = WHEEL_CY - TURBINE_OFFSET_Y; // wheel center (shifted up)
+  const arcR = WHEEL_R * 0.5; // half radius — particles run midway through blades
+  // Entry/exit x positions on the housing circle at y = CIRCUIT_BOTTOM
+  const dy = CIRCUIT_BOTTOM - arcCY;
+  const dx = Math.sqrt(Math.max(0, arcR * arcR - dy * dy));
+  const arcEntryX = arcCX - dx;
+  const arcExitX = arcCX + dx;
+  // Angles for the arc (going clockwise through bottom = positive y)
+  const arcStartAngle = Math.atan2(CIRCUIT_BOTTOM - arcCY, arcEntryX - arcCX);
+  const arcEndAngle = Math.atan2(CIRCUIT_BOTTOM - arcCY, arcExitX - arcCX);
+  // Arc length (going clockwise from startAngle to endAngle through bottom)
+  // startAngle ~ positive (slightly > pi/2), endAngle ~ small positive (slightly < pi/2)
+  // We go CW: from startAngle down through PI to endAngle
+  let arcSweep = arcStartAngle - arcEndAngle;
+  if (arcSweep < 0) arcSweep += Math.PI * 2;
+  const arcLen = arcR * arcSweep;
+
   const segments = [
     // Left flex tube (tank to circuit top)
-    { x0: LEFT_DOT_X, y0: leftBottom, x1: LEFT_DOT_X, y1: CIRCUIT_TOP },
+    { type: 'line', x0: LEFT_DOT_X, y0: leftBottom, x1: LEFT_DOT_X, y1: CIRCUIT_TOP },
     // Top horizontal left (dot to left corner)
-    { x0: LEFT_DOT_X, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_TOP },
+    { type: 'line', x0: LEFT_DOT_X, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_TOP },
     // Left vertical side (corner down to bottom)
-    { x0: CIRCUIT_LEFT, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_BOTTOM },
-    // Bottom left horizontal (to wheel)
-    { x0: CIRCUIT_LEFT, y0: CIRCUIT_BOTTOM, x1: WHEEL_CX - WHEEL_R - 4, y1: CIRCUIT_BOTTOM },
-    // Through wheel area
-    { x0: WHEEL_CX - WHEEL_R - 4, y0: CIRCUIT_BOTTOM, x1: WHEEL_CX + WHEEL_R + 4, y1: CIRCUIT_BOTTOM },
-    // Bottom right horizontal (from wheel)
-    { x0: WHEEL_CX + WHEEL_R + 4, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_BOTTOM },
+    { type: 'line', x0: CIRCUIT_LEFT, y0: CIRCUIT_TOP, x1: CIRCUIT_LEFT, y1: CIRCUIT_BOTTOM },
+    // Bottom left horizontal (to turbine arc entry)
+    { type: 'line', x0: CIRCUIT_LEFT, y0: CIRCUIT_BOTTOM, x1: arcEntryX, y1: CIRCUIT_BOTTOM },
+    // Arc through turbine chamber (CW through bottom)
+    { type: 'arc', cx: arcCX, cy: arcCY, r: arcR, startAngle: arcStartAngle, sweep: -arcSweep, len: arcLen },
+    // Bottom right horizontal (from turbine arc exit)
+    { type: 'line', x0: arcExitX, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_BOTTOM },
     // Right vertical side (bottom up to corner)
-    { x0: CIRCUIT_RIGHT, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_TOP },
+    { type: 'line', x0: CIRCUIT_RIGHT, y0: CIRCUIT_BOTTOM, x1: CIRCUIT_RIGHT, y1: CIRCUIT_TOP },
     // Top horizontal right (right corner to dot)
-    { x0: CIRCUIT_RIGHT, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: CIRCUIT_TOP },
+    { type: 'line', x0: CIRCUIT_RIGHT, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: CIRCUIT_TOP },
     // Right flex tube (circuit top up to tank)
-    { x0: RIGHT_DOT_X, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: rightBottom },
+    { type: 'line', x0: RIGHT_DOT_X, y0: CIRCUIT_TOP, x1: RIGHT_DOT_X, y1: rightBottom },
   ];
-  const lengths = segments.map(s => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
+
+  const lengths = segments.map(s => s.type === 'arc' ? s.len : Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
   const total = lengths.reduce((a, b) => a + b, 0);
   let dist = t * total;
   for (let i = 0; i < segments.length; i++) {
     if (dist <= lengths[i]) {
-      const frac = lengths[i] > 0 ? dist / lengths[i] : 0;
-      return {
-        x: segments[i].x0 + (segments[i].x1 - segments[i].x0) * frac,
-        y: segments[i].y0 + (segments[i].y1 - segments[i].y0) * frac
-      };
+      const seg = segments[i];
+      if (seg.type === 'arc') {
+        const frac = lengths[i] > 0 ? dist / lengths[i] : 0;
+        const angle = seg.startAngle + seg.sweep * frac;
+        return { x: seg.cx + Math.cos(angle) * seg.r, y: seg.cy + Math.sin(angle) * seg.r };
+      } else {
+        const frac = lengths[i] > 0 ? dist / lengths[i] : 0;
+        return { x: seg.x0 + (seg.x1 - seg.x0) * frac, y: seg.y0 + (seg.y1 - seg.y0) * frac };
+      }
     }
     dist -= lengths[i];
   }
@@ -512,19 +554,25 @@ function update(dt) {
     if (state.rightWater <= 0.001) Q = 0;
   }
 
-  state.leftWater = Math.max(0, Math.min(1, state.leftWater - Q));
-  state.rightWater = Math.max(0, Math.min(1, state.rightWater + Q));
+  if (!state.pumpActive) {
+    // Battery mode: water levels change, capacity affects drain speed
+    const C = state.tankCapacity;
+    state.leftWater = Math.max(0, Math.min(1, state.leftWater - Q / C));
+    state.rightWater = Math.max(0, Math.min(1, state.rightWater + Q / C));
 
-  const total = state.leftWater + state.rightWater;
-  if (total > 0.001) {
-    state.leftWater *= MAX_WATER / total;
-    state.rightWater *= MAX_WATER / total;
+    const total = state.leftWater + state.rightWater;
+    if (total > 0.001) {
+      state.leftWater *= MAX_WATER / total;
+      state.rightWater *= MAX_WATER / total;
+    }
   }
+  // Pump mode: water levels stay constant (pump recirculates)
 
   state.flowRate = Q;
 
-  const targetSpeed = Q * 150 / R;
-  state.wheelSpeed += (targetSpeed - state.wheelSpeed) * 0.08;
+  const targetSpeed = -Q * 150 / R;
+  const smoothFactor = 1 - Math.pow(0.92, dt * 60);
+  state.wheelSpeed += (targetSpeed - state.wheelSpeed) * smoothFactor;
   state.wheelAngle += state.wheelSpeed;
 
   if (state.showParticles) {
@@ -575,6 +623,7 @@ function draw() {
   drawHeightAnnotation();
   drawFlowArrow();
   drawLabels();
+  drawPumpSystem();
   if (state.showCircuit) drawCircuit();
   if (state.showValues) drawValues();
 }
@@ -583,7 +632,7 @@ function drawPipes(lb, rb) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // Helper: draw one segment outer + inner
+  // Helper: draw one segment outer + inner (for flex tubes only)
   function pipeSegment(x0, y0, x1, y1, outer, inner) {
     ctx.lineWidth = PIPE_R * 2;
     ctx.strokeStyle = outer;
@@ -627,16 +676,29 @@ function drawPipes(lb, rb) {
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 
-  // Rigid circuit pipes
-  // Top horizontal: from dots outward to circuit corners
-  pipeSegment(LEFT_DOT_X, CIRCUIT_TOP, CIRCUIT_LEFT, CIRCUIT_TOP, colors.pipe, colors.pipeInner);
-  pipeSegment(RIGHT_DOT_X, CIRCUIT_TOP, CIRCUIT_RIGHT, CIRCUIT_TOP, colors.pipe, colors.pipeInner);
-  // Left vertical side (corner down to bottom)
-  pipeSegment(CIRCUIT_LEFT, CIRCUIT_TOP, CIRCUIT_LEFT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
-  // Right vertical side
-  pipeSegment(CIRCUIT_RIGHT, CIRCUIT_TOP, CIRCUIT_RIGHT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
-  // Bottom horizontal
-  pipeSegment(CIRCUIT_LEFT, CIRCUIT_BOTTOM, CIRCUIT_RIGHT, CIRCUIT_BOTTOM, colors.pipe, colors.pipeInner);
+  // Rigid circuit pipes as ONE continuous path (no corner overlaps)
+  // Path: left dot → left corner → bottom-left → bottom-right → right corner → right dot
+  function rigidCircuitPath() {
+    ctx.beginPath();
+    ctx.moveTo(LEFT_DOT_X, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
+    ctx.lineTo(RIGHT_DOT_X, CIRCUIT_TOP);
+  }
+
+  // Outer pipe wall
+  ctx.lineWidth = PIPE_R * 2;
+  ctx.strokeStyle = colors.pipe;
+  rigidCircuitPath();
+  ctx.stroke();
+
+  // Inner pipe fill
+  ctx.lineWidth = PIPE_R * 2 - 6;
+  ctx.strokeStyle = colors.pipeInner;
+  rigidCircuitPath();
+  ctx.stroke();
 }
 
 function drawPipeWater(lb, rb) {
@@ -652,8 +714,12 @@ function drawPipeWater(lb, rb) {
   const leftSurfY = getWaterSurfaceY(state.leftY, state.leftWater);
   const rightSurfY = getWaterSurfaceY(state.rightY, state.rightWater);
 
-  // Left flex tube (from water surface down to circuit top)
-  if (state.leftWater > 0.005) {
+  // Draw the rigid circuit loop as ONE continuous path to avoid overlap at corners
+  const leftHasWater = state.leftWater > 0.005;
+  const rightHasWater = state.rightWater > 0.005;
+
+  // Left flex tube (separate path — flex tubes don't join rigid pipes at an angle)
+  if (leftHasWater) {
     const startY = Math.max(leftSurfY, state.leftY + TANK_WALL);
     ctx.beginPath();
     ctx.moveTo(LEFT_DOT_X, Math.min(lb - TANK_WALL, startY + PIPE_R));
@@ -661,50 +727,35 @@ function drawPipeWater(lb, rb) {
     ctx.stroke();
   }
 
-  // Top horizontal: from dots outward to corners (filled when water present)
-  if (state.leftWater > 0.005) {
-    ctx.beginPath();
-    ctx.moveTo(LEFT_DOT_X, CIRCUIT_TOP);
-    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_TOP);
-    ctx.stroke();
-  }
-  if (state.rightWater > 0.005) {
-    ctx.beginPath();
-    ctx.moveTo(RIGHT_DOT_X, CIRCUIT_TOP);
-    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
-    ctx.stroke();
-  }
-
-  // Left vertical side (corner to bottom)
-  if (state.leftWater > 0.005) {
-    ctx.beginPath();
-    ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_TOP);
-    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
-    ctx.stroke();
-  }
-
-  // Bottom horizontal (always filled if any water)
-  ctx.beginPath();
-  ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
-  ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
-  ctx.stroke();
-
-  // Right vertical side (bottom to corner)
-  if (state.rightWater > 0.005) {
-    ctx.beginPath();
-    ctx.moveTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
-    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
-    ctx.stroke();
-  }
-
-  // Right flex tube (from circuit top up to water surface)
-  if (state.rightWater > 0.005) {
+  // Right flex tube (separate path)
+  if (rightHasWater) {
     const startY = Math.max(rightSurfY, state.rightY + TANK_WALL);
     ctx.beginPath();
     ctx.moveTo(RIGHT_DOT_X, CIRCUIT_TOP);
     ctx.lineTo(RIGHT_DOT_X, Math.min(rb - TANK_WALL, startY + PIPE_R));
     ctx.stroke();
   }
+
+  // Rigid circuit: single continuous path (lineJoin handles corners cleanly)
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (leftHasWater) {
+    ctx.moveTo(LEFT_DOT_X, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_TOP);
+    ctx.lineTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
+    ctx.lineTo(RIGHT_DOT_X, CIRCUIT_TOP);
+  } else if (rightHasWater) {
+    ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_TOP);
+    ctx.lineTo(RIGHT_DOT_X, CIRCUIT_TOP);
+  } else {
+    ctx.moveTo(CIRCUIT_LEFT, CIRCUIT_BOTTOM);
+    ctx.lineTo(CIRCUIT_RIGHT, CIRCUIT_BOTTOM);
+  }
+  ctx.stroke();
 
   ctx.globalAlpha = 1;
 }
@@ -777,70 +828,130 @@ function drawTank(x, y, waterFrac, label) {
 }
 
 function drawWheel() {
-  const cx = WHEEL_CX, cy = WHEEL_CY, r = WHEEL_R;
+  const cx = WHEEL_CX;
+  const cy = WHEEL_CY - TURBINE_OFFSET_Y; // wheel center shifted up
+  const r = WHEEL_R;
+  const outerR = HOUSING_R;
+  const hubR = 8;
+  const numBlades = 8;
+  const openY = CIRCUIT_BOTTOM; // pipe height (below wheel center)
+  const channelH = PIPE_R * 2 - 8;
 
-  // Brake pad
+  // === Housing with offset opening channels ===
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+  ctx.clip();
+  // Housing wall (fills within clipped circle)
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fillRect(cx - outerR, cy - outerR, outerR * 2, outerR * 2);
+  // Channel cut at pipe height (looks like open passage, not a block)
+  ctx.fillStyle = colors.tankInner;
+  ctx.fillRect(cx - outerR, openY - channelH / 2, outerR * 2, channelH);
+  ctx.restore();
+
+  // Inner chamber
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = colors.tankInner;
+  ctx.fill();
+
+  // Water inside chamber and channels
+  if (state.leftWater > 0.005 || state.rightWater > 0.005) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+    // Include channel areas in clip for water fill
+    ctx.rect(cx - outerR, openY - channelH / 2 + 1, outerR - r + 1, channelH - 2);
+    ctx.rect(cx + r - 1, openY - channelH / 2 + 1, outerR - r + 1, channelH - 2);
+    ctx.clip();
+    ctx.fillStyle = colors.water;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(cx - outerR, cy - r, outerR * 2, r * 2 + TURBINE_OFFSET_Y + channelH);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // === Blades (extend from hub to near housing wall) ===
+  for (let i = 0; i < numBlades; i++) {
+    const a = state.wheelAngle + (i * Math.PI * 2) / numBlades;
+    const endR = r - 2;
+
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * hubR, cy + Math.sin(a) * hubR);
+    ctx.lineTo(cx + Math.cos(a) * endR, cy + Math.sin(a) * endR);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = colors.wheelBlade;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+
+    // Highlight edge
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = colors.wheelBladeHi;
+    ctx.stroke();
+  }
+
+  // === Hub ===
+  ctx.beginPath();
+  ctx.arc(cx, cy, hubR, 0, Math.PI * 2);
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = colors.tankInner;
+  ctx.fill();
+
+  // === Shaft bearing at top of housing ===
+  ctx.beginPath();
+  ctx.arc(cx, cy - outerR, 5, 0, Math.PI * 2);
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy - outerR, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = colors.tankInner;
+  ctx.fill();
+
+  // === Shaft (from housing top upward) ===
+  const shaftTop = cy - outerR - 18;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - outerR);
+  ctx.lineTo(cx, shaftTop);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = colors.wheelFrame;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // === Brake pads on shaft ===
   const brakeStrength = (state.resistance - 1) / 9;
   const brakeColor = lerpColor(colors.brakeOff, colors.brakeOn, brakeStrength);
-  const padAngle = 0.4 + brakeStrength * 0.4;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r + 6, -Math.PI / 2 - padAngle, -Math.PI / 2 + padAngle);
-  ctx.lineWidth = 6 + brakeStrength * 4;
-  ctx.strokeStyle = brakeColor;
-  ctx.lineCap = 'butt';
-  ctx.stroke();
+  const brakeY = cy - outerR - 8;
+  const padW = 4 + brakeStrength * 4;
+  const padH = 13;
+
+  ctx.fillStyle = brakeColor;
+  roundRect(cx - padW - 2, brakeY - padH / 2, padW, padH, 2);
+  ctx.fill();
+  roundRect(cx + 2, brakeY - padH / 2, padW, padH, 2);
+  ctx.fill();
 
   // Brake label
   ctx.fillStyle = brakeColor;
   ctx.font = '500 10px "DM Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Bremse', cx, cy - r - 16);
-
-  // Outer ring
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = colors.wheelFrame;
-  ctx.stroke();
-
-  // Inner hub
-  ctx.beginPath();
-  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-  ctx.fillStyle = colors.wheelFrame;
-  ctx.fill();
-
-  // Blades
-  const numBlades = 6;
-  for (let i = 0; i < numBlades; i++) {
-    const a = state.wheelAngle + (i * Math.PI * 2) / numBlades;
-    const bx = cx + Math.cos(a) * (r - 4);
-    const by = cy + Math.sin(a) * (r - 4);
-
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8);
-    ctx.lineTo(bx, by);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = colors.wheelBlade;
-    ctx.stroke();
-
-    const perpA = a + Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(bx + Math.cos(perpA) * 6, by + Math.sin(perpA) * 6);
-    ctx.lineTo(bx - Math.cos(perpA) * 6, by - Math.sin(perpA) * 6);
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = colors.wheelBladeHi;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  }
+  ctx.fillText('Bremse', cx, brakeY - padH / 2 - 6);
 }
 
 function drawParticles(lb, rb) {
-  ctx.fillStyle = colors.waterLight;
   for (const p of state.particles) {
     const pos = getPipePathPoint(p.t, lb - TANK_WALL, rb - TANK_WALL);
+    // Check if particle is inside turbine housing region
+    const turbCY = WHEEL_CY - TURBINE_OFFSET_Y;
+    const distFromWheel = Math.hypot(pos.x - WHEEL_CX, pos.y - turbCY);
+    const inTurbine = distFromWheel < HOUSING_R + 2;
+    ctx.fillStyle = inTurbine ? '#ffffff' : colors.waterLight;
+    ctx.globalAlpha = inTurbine ? 0.95 : 0.8;
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
-    ctx.globalAlpha = 0.8;
+    ctx.arc(pos.x, pos.y, inTurbine ? 3.5 : 3, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -936,13 +1047,194 @@ function drawLabels() {
   ctx.fillStyle = colors.textMuted;
   ctx.font = '500 11px "DM Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Schaufelrad (Verbraucher)', WHEEL_CX, WHEEL_CY + WHEEL_R + 22);
+  ctx.fillText('Turbine (Verbraucher)', WHEEL_CX, WHEEL_CY - TURBINE_OFFSET_Y + HOUSING_R + 16);
 
   if (state.acMode) {
     ctx.fillStyle = colors.accent;
     ctx.font = '600 11px "DM Sans", sans-serif';
     ctx.fillText('⚡ AC-Modus', CW / 2, 28);
   }
+}
+
+function drawPumpSystem() {
+  if (!state.pumpActive) return;
+
+  const leftHigher = state.leftY <= state.rightY;
+  const srcY = leftHigher ? state.rightY : state.leftY;
+  const dstY = leftHigher ? state.leftY : state.rightY;
+  const dstDotX = leftHigher ? LEFT_DOT_X : RIGHT_DOT_X;
+
+  // Route pump pipe on the outer side of the source (lower) tank
+  const goRight = leftHigher;
+  const exitX = goRight ? (RIGHT_X + TANK_W) : LEFT_X;
+  const exitY = srcY + TANK_H - 25;
+  const pipeX = goRight ? 700 : 120;
+  const topY = 8;
+  const entryX = dstDotX;
+  const entryY = dstY + 5;
+
+  // Pump on vertical section
+  const pumpR = 16;
+  const pumpCX = pipeX;
+  const pumpCY = Math.max(topY + pumpR + 8, Math.min((topY + exitY) / 2, exitY - pumpR - 8));
+
+  // Pipe segment helper
+  function pPipe(x0, y0, x1, y1) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = PIPE_R * 2 - 4;
+    ctx.strokeStyle = colors.pipe;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.lineWidth = PIPE_R * 2 - 10;
+    ctx.strokeStyle = colors.pipeInner;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+
+  // Water fill helper
+  function pWater(x0, y0, x1, y1) {
+    ctx.lineWidth = PIPE_R * 2 - 12;
+    ctx.strokeStyle = colors.water;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+
+  // Draw pump pipe segments
+  pPipe(exitX, exitY, pipeX, exitY);
+  pPipe(pipeX, exitY, pipeX, pumpCY + pumpR + 4);
+  pPipe(pipeX, pumpCY - pumpR - 4, pipeX, topY);
+  pPipe(pipeX, topY, entryX, topY);
+  pPipe(entryX, topY, entryX, entryY);
+
+  // Water in pump pipe
+  ctx.globalAlpha = 0.5;
+  pWater(exitX, exitY, pipeX, exitY);
+  pWater(pipeX, exitY, pipeX, pumpCY + pumpR + 4);
+  pWater(pipeX, pumpCY - pumpR - 4, pipeX, topY);
+  pWater(pipeX, topY, entryX, topY);
+  pWater(entryX, topY, entryX, entryY);
+  ctx.globalAlpha = 1;
+
+  // Water drops at pour point (splashing into tank)
+  for (let i = 0; i < 5; i++) {
+    const phase = (state.time * 4.5 + i * 0.2) % 1;
+    const dropY = entryY + phase * 20;
+    const spread = Math.sin(phase * Math.PI) * 6;
+    const dropAlpha = (1 - phase) * 0.85;
+    ctx.globalAlpha = dropAlpha;
+    ctx.fillStyle = colors.water;
+    ctx.beginPath();
+    ctx.ellipse(entryX + (i - 2) * spread * 0.3, dropY, 2, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Pump housing
+  ctx.beginPath();
+  ctx.arc(pumpCX, pumpCY, pumpR + 3, 0, Math.PI * 2);
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(pumpCX, pumpCY, pumpR, 0, Math.PI * 2);
+  ctx.fillStyle = colors.tankInner;
+  ctx.fill();
+
+  // Water inside pump chamber
+  ctx.beginPath();
+  ctx.arc(pumpCX, pumpCY, pumpR - 1, 0, Math.PI * 2);
+  ctx.fillStyle = colors.water;
+  ctx.globalAlpha = 0.25;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Curved blades (distinguishes pump from turbine's straight blades)
+  const numBlades = 6;
+  const bladeHub = 4;
+  const pAngle = state.time * 5;
+  for (let i = 0; i < numBlades; i++) {
+    const a = pAngle + (i * Math.PI * 2) / numBlades;
+    const sx = pumpCX + Math.cos(a) * bladeHub;
+    const sy = pumpCY + Math.sin(a) * bladeHub;
+    const ex = pumpCX + Math.cos(a) * (pumpR - 2);
+    const ey = pumpCY + Math.sin(a) * (pumpR - 2);
+    const perpX = -Math.sin(a) * pumpR * 0.35;
+    const perpY = Math.cos(a) * pumpR * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo((sx + ex) / 2 + perpX, (sy + ey) / 2 + perpY, ex, ey);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = colors.wheelBlade;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = colors.wheelBladeHi;
+    ctx.stroke();
+  }
+
+  // Hub
+  ctx.beginPath();
+  ctx.arc(pumpCX, pumpCY, bladeHub, 0, Math.PI * 2);
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.fill();
+
+  // "Pumpe" label
+  ctx.fillStyle = colors.accent;
+  ctx.font = '500 10px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Pumpe', pumpCX, pumpCY + pumpR + 16);
+
+  // Cable from pump to Steckdose
+  const steckX = goRight ? pipeX + 60 : pipeX - 60;
+  const steckY = pumpCY - 42;
+  const cableExitX = goRight ? pumpCX + pumpR + 3 : pumpCX - pumpR - 3;
+
+  ctx.beginPath();
+  ctx.moveTo(cableExitX, pumpCY);
+  ctx.quadraticCurveTo(steckX, pumpCY, steckX, steckY + 16);
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = colors.textMuted;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([]);
+  ctx.stroke();
+
+  // Steckdose (European Schuko outlet)
+  const sw = 26, sh = 30;
+  const sox = steckX - sw / 2, soy = steckY - sh / 2;
+
+  // Outlet body
+  roundRect(sox, soy, sw, sh, 4);
+  ctx.fillStyle = colors.surfaceAlt;
+  ctx.fill();
+  ctx.strokeStyle = colors.wheelFrame;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Recessed circle
+  ctx.beginPath();
+  ctx.arc(steckX, steckY, 9, 0, Math.PI * 2);
+  ctx.fillStyle = colors.tankInner;
+  ctx.fill();
+  ctx.strokeStyle = colors.pipe;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Two round pin holes
+  ctx.fillStyle = colors.wheelFrame;
+  ctx.beginPath();
+  ctx.arc(steckX, steckY - 3.5, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(steckX, steckY + 3.5, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ground clips (Schutzkontakt)
+  ctx.fillRect(steckX - 8, steckY - 1.5, 2, 3);
+  ctx.fillRect(steckX + 6, steckY - 1.5, 2, 3);
+
+  // "Steckdose" label
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '500 9px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚡ Steckdose', steckX, soy + sh + 12);
 }
 
 function drawCircuit() {
@@ -1184,6 +1476,9 @@ const showParticlesEl = document.getElementById('showParticles');
 const showCircuitEl = document.getElementById('showCircuit');
 const showValuesEl = document.getElementById('showValues');
 const resetBtn = document.getElementById('resetBtn');
+const tankCapEl = document.getElementById('tankCap');
+const capValEl = document.getElementById('capVal');
+const pumpModeEl = document.getElementById('pumpMode');
 
 resistanceEl.addEventListener('input', () => {
   state.resistance = parseFloat(resistanceEl.value);
@@ -1195,6 +1490,7 @@ acModeEl.addEventListener('change', () => {
   freqRowEl.classList.toggle('active', state.acMode);
   if (state.acMode) {
     state.acPhase = 0;
+    state.wheelSpeed = 0;
     hideHint();
   }
 });
@@ -1217,6 +1513,22 @@ showValuesEl.addEventListener('change', () => {
   state.showValues = showValuesEl.checked;
 });
 
+tankCapEl.addEventListener('input', () => {
+  const v = parseFloat(tankCapEl.value);
+  state.tankCapacity = Math.pow(10, v - 1);
+  const cap = state.tankCapacity;
+  capValEl.textContent = cap < 10 ? cap.toFixed(1) + '×' : Math.round(cap) + '×';
+});
+
+pumpModeEl.addEventListener('change', () => {
+  state.pumpActive = pumpModeEl.checked;
+  if (state.pumpActive) {
+    // Reset water to 50/50 when pump activates
+    state.leftWater = 0.5;
+    state.rightWater = 0.5;
+  }
+});
+
 resetBtn.addEventListener('click', () => {
   state.leftY = 40;
   state.rightY = 105;
@@ -1228,7 +1540,12 @@ resetBtn.addEventListener('click', () => {
   state.acPhase = 0;
   state.time = 0;
   state.acMode = false;
+  state.tankCapacity = 1;
+  state.pumpActive = false;
   acModeEl.checked = false;
+  pumpModeEl.checked = false;
+  tankCapEl.value = '1';
+  capValEl.textContent = '1×';
   freqRowEl.classList.remove('active');
   initParticles();
 });
